@@ -393,7 +393,7 @@ function useData(obj){
 function renderOrgSelect(currentSlug){
   const sel = $("#orgSelect");
   const opt = o => '<option value="'+esc(o.slug)+'"'+(o.slug===currentSlug?' selected':'')+'>'+
-    esc(o.name)+(o.score==null?'':' ('+o.score.toFixed(1)+'%)')+'</option>';
+    esc(o.name)+'</option>';
   const items = DATA.orgs.slice()
     .sort((a,b2)=>a.name.toLowerCase().localeCompare(b2.name.toLowerCase()));
   sel.innerHTML = '<option value=""'+(currentSlug?'':' selected')+'>All organizations ('+DATA.orgs.length+')</option>'+
