@@ -71,6 +71,16 @@ a:hover{text-decoration:underline}
 /* ---------- Toolbar ---------- */
 .toolbar{background:var(--surface);border-bottom:1px solid var(--line);flex:none;
   display:flex;align-items:center;gap:12px;padding:11px 20px;flex-wrap:wrap}
+.crumb{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--ink-3);font-weight:500;white-space:nowrap}
+.crumb-dot{width:9px;height:9px;border-radius:50%;background:var(--brand-accent-2);display:inline-block}
+.crumb .sep{color:var(--ink-3)}
+#crumbOrg{color:var(--ink);font-weight:700}
+.client-select{font-size:15px;font-weight:700;color:var(--ink);border:1px solid var(--line);border-radius:9px;
+  padding:8px 34px 8px 12px;background:#fff;cursor:pointer;max-width:340px;appearance:none;font-family:inherit;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23555' stroke-width='3'><path d='M6 9l6 6 6-6'/></svg>");
+  background-repeat:no-repeat;background-position:right 12px center}
+.client-select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(0,43,255,.12)}
+.toolbar.detailmode .search,.toolbar.detailmode .riskfilter,.toolbar.detailmode .rcount{display:none}
 .search{position:relative;flex:1;min-width:200px;max-width:420px}
 .search input{width:100%;padding:9px 12px 9px 34px;border:1px solid var(--line);border-radius:8px;
   font-size:13.5px;outline:none;background:#fbfcfe;font-family:inherit}
@@ -249,6 +259,8 @@ body.locked .app{filter:blur(6px);pointer-events:none}
   </div>
 
   <div class="toolbar" id="toolbar">
+    <div class="crumb"><span class="crumb-dot"></span>Organizations <span class="sep">/</span> <span id="crumbOrg">All</span></div>
+    <select id="orgSelect" class="client-select" aria-label="Select organization"></select>
     <div class="search">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
       <input id="q" type="text" placeholder="Search organizations…" autocomplete="off" />
@@ -344,6 +356,22 @@ function useData(obj){
   route();
 }
 
+/* ---------- Org selector (dropdown, grouped by posture band) ---------- */
+function renderOrgSelect(currentSlug){
+  const sel = $("#orgSelect");
+  const groups = [["bad","At risk (<70%)"],["warn","Watch (70–85%)"],["ok","Healthy (≥85%)"],["na","Not scored"]];
+  const opt = o => '<option value="'+esc(o.slug)+'"'+(o.slug===currentSlug?' selected':'')+'>'+
+    esc(o.name)+(o.score==null?'':' ('+o.score.toFixed(1)+'%)')+'</option>';
+  sel.innerHTML = '<option value=""'+(currentSlug?'':' selected')+'>All organizations ('+DATA.orgs.length+')</option>'+
+    groups.map(([b,label])=>{
+      const items = DATA.orgs.filter(o=>band(o.score)===b)
+        .sort((a,b2)=>a.name.toLowerCase().localeCompare(b2.name.toLowerCase()));
+      return items.length ? '<optgroup label="'+label+'">'+items.map(opt).join("")+'</optgroup>' : "";
+    }).join("");
+  $("#crumbOrg").textContent = currentSlug
+    ? (DATA.orgs.find(o=>o.slug===currentSlug)||{}).name || "—" : "All";
+}
+
 /* ---------- Routing (#/ overview · #/org/<slug> detail) ---------- */
 function route(){
   if(!DATA) return;
@@ -392,6 +420,8 @@ function sortOrgs(list){
 
 function renderOverview(){
   $("#toolbar").style.display="flex";
+  $("#toolbar").classList.remove("detailmode");
+  renderOrgSelect(null);
   const orgs = DATA.orgs;
   const sum = k => orgs.reduce((n,o)=>n+(o[k]||0),0);
   const scores = orgs.filter(o=>o.score!=null);
@@ -461,7 +491,9 @@ function renderOverview(){
 
 /* ---------- Detail ---------- */
 function renderDetail(o){
-  $("#toolbar").style.display="none";
+  $("#toolbar").style.display="flex";
+  $("#toolbar").classList.add("detailmode");
+  renderOrgSelect(o.slug);
   const b = band(o.score);
   const ringColor = b==="ok"?"var(--ok-bar)":b==="warn"?"var(--warn-bar)":b==="bad"?"var(--bad-bar)":"#9aa0ab";
   const ep = encPct(o);
@@ -531,6 +563,9 @@ function renderDetail(o){
 /* ---------- Wire up ---------- */
 $("#lockForm").addEventListener("submit",e=>{e.preventDefault();const v=$("#lockInput").value;if(v)tryUnlock(v);});
 $("#q").addEventListener("input",e=>{searchTerm=e.target.value;if(!location.hash.startsWith("#/org/"))renderOverview();});
+$("#orgSelect").addEventListener("change",e=>{
+  location.hash = e.target.value ? "#/org/"+encodeURIComponent(e.target.value) : "#/";
+});
 $("#riskFilter").addEventListener("click",e=>{
   const b=e.target.closest(".rf"); if(!b) return;
   riskMode=b.dataset.r;
