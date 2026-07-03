@@ -86,6 +86,14 @@ a:hover{text-decoration:underline}
   font-size:13.5px;outline:none;background:#fbfcfe;font-family:inherit}
 .search input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(0,43,255,.12)}
 .search svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--ink-3)}
+/* search relocated into the dark top bar */
+.topbar-search{position:relative;flex:0 1 360px;min-width:180px;max-width:400px;margin:0 6px}
+.topbar-search input{width:100%;padding:8px 12px 8px 32px;border:1px solid var(--brand-line);border-radius:8px;
+  font-size:13px;outline:none;background:var(--brand-navy-2);color:var(--brand-ink);font-family:inherit}
+.topbar-search input::placeholder{color:var(--brand-ink-soft)}
+.topbar-search input:focus{border-color:var(--brand-accent);box-shadow:0 0 0 3px rgba(0,43,255,.30)}
+.topbar-search svg{position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--brand-ink-soft)}
+@media(max-width:820px){.topbar-search{order:5;flex:1 1 100%;max-width:none;margin:4px 0 0}}
 .riskfilter{display:inline-flex;gap:3px;background:#f1f3f8;border:1px solid var(--line);border-radius:9px;padding:3px}
 .rf{font-size:12.5px;font-weight:700;color:var(--ink-2);background:transparent;border:none;cursor:pointer;
   padding:5px 12px;border-radius:6px;font-family:inherit;transition:.12s;display:inline-flex;align-items:center;gap:6px}
@@ -248,6 +256,10 @@ body.locked .app{filter:blur(6px);pointer-events:none}
       <span class="app-name">Client Security Status</span>
     </div>
     <span class="spacer"></span>
+    <div class="search topbar-search">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <input id="q" type="text" placeholder="Search organizations…" autocomplete="off" />
+    </div>
     <span class="pqltag">PQL</span>
     <span class="count-pill" id="periodPill">—</span>
     <span class="count-pill" id="countPill">— orgs</span>
@@ -259,12 +271,8 @@ body.locked .app{filter:blur(6px);pointer-events:none}
   </div>
 
   <div class="toolbar" id="toolbar">
-    <div class="crumb"><span class="crumb-dot"></span>Organizations <span class="sep">/</span> <span id="crumbOrg">All</span></div>
+    <div class="crumb"><span class="crumb-dot"></span>Client <span class="sep">/</span> <span id="crumbOrg">All</span></div>
     <select id="orgSelect" class="client-select" aria-label="Select organization"></select>
-    <div class="search">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-      <input id="q" type="text" placeholder="Search organizations…" autocomplete="off" />
-    </div>
     <div class="riskfilter" id="riskFilter" role="group" aria-label="Filter by posture">
       <button class="rf active" data-r="all">All <span class="n" id="nAll"></span></button>
       <button class="rf" data-r="ok">Healthy <span class="n" id="nOk"></span></button>
@@ -359,15 +367,12 @@ function useData(obj){
 /* ---------- Org selector (dropdown, grouped by posture band) ---------- */
 function renderOrgSelect(currentSlug){
   const sel = $("#orgSelect");
-  const groups = [["bad","At risk (<70%)"],["warn","Watch (70–85%)"],["ok","Healthy (≥85%)"],["na","Not scored"]];
   const opt = o => '<option value="'+esc(o.slug)+'"'+(o.slug===currentSlug?' selected':'')+'>'+
     esc(o.name)+(o.score==null?'':' ('+o.score.toFixed(1)+'%)')+'</option>';
+  const items = DATA.orgs.slice()
+    .sort((a,b2)=>a.name.toLowerCase().localeCompare(b2.name.toLowerCase()));
   sel.innerHTML = '<option value=""'+(currentSlug?'':' selected')+'>All organizations ('+DATA.orgs.length+')</option>'+
-    groups.map(([b,label])=>{
-      const items = DATA.orgs.filter(o=>band(o.score)===b)
-        .sort((a,b2)=>a.name.toLowerCase().localeCompare(b2.name.toLowerCase()));
-      return items.length ? '<optgroup label="'+label+'">'+items.map(opt).join("")+'</optgroup>' : "";
-    }).join("");
+    items.map(opt).join("");
   $("#crumbOrg").textContent = currentSlug
     ? (DATA.orgs.find(o=>o.slug===currentSlug)||{}).name || "—" : "All";
 }
@@ -562,7 +567,7 @@ function renderDetail(o){
 
 /* ---------- Wire up ---------- */
 $("#lockForm").addEventListener("submit",e=>{e.preventDefault();const v=$("#lockInput").value;if(v)tryUnlock(v);});
-$("#q").addEventListener("input",e=>{searchTerm=e.target.value;if(!location.hash.startsWith("#/org/"))renderOverview();});
+$("#q").addEventListener("input",e=>{searchTerm=e.target.value;if(location.hash.startsWith("#/org/")){location.hash="#/";}else{renderOverview();}});
 $("#orgSelect").addEventListener("change",e=>{
   location.hash = e.target.value ? "#/org/"+encodeURIComponent(e.target.value) : "#/";
 });
