@@ -1,0 +1,8 @@
+# NEVER commit plaintext client data or the source workbook
+data.json
+*.xlsx
+*.xlsm
+.dashpass
+
+.DS_Store
+Icon?
