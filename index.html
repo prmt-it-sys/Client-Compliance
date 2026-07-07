@@ -157,6 +157,8 @@ table.sum{border-collapse:collapse;width:100%;font-size:13px;min-width:980px}
 .badge.neutral{background:var(--neutral-bg);color:var(--neutral-fg)}
 .pillnum{font-weight:700}
 .pillnum.zero{color:var(--ink-3);font-weight:400}
+.srctag{font-size:8.5px;font-weight:800;letter-spacing:.05em;color:#04222a;background:var(--brand-accent-2);
+  padding:2px 5px;border-radius:4px;vertical-align:2px;margin-left:5px}
 
 .methodology{margin-top:14px;font-size:12px;color:var(--ink-3);line-height:1.55;max-width:1000px}
 .methodology b{color:var(--ink-2)}
@@ -486,7 +488,7 @@ function renderOverview(){
       '<td><div class="scorecell"><div class="scorebar"><i class="b-'+b+'" style="width:'+(o.score||0)+'%"></i></div>'+
         '<span class="scoreval c-'+b+'">'+(o.score==null?"—":o.score.toFixed(1)+"%")+'</span></div></td>'+
       '<td class="num">'+fmt(o.active)+' <span class="muted">/ '+fmt(o.totalUsers)+'</span></td>'+
-      '<td class="num '+pctClass(o.mfaPct,90,70)+'" style="font-weight:800">'+(o.mfaPct==null?"—":o.mfaPct.toFixed(1)+"%")+'</td>'+
+      '<td class="num '+pctClass(o.mfaPct,90,70)+'" style="font-weight:800">'+(o.mfaPct==null?"—":o.mfaPct.toFixed(1)+"%")+(o.duo?'<span class="srctag" title="Includes Cisco Duo enrollment">＋DUO</span>':'')+'</td>'+
       num(o.activeNoMfa,true)+ num(o.expiredPw,true)+
       '<td>'+(o.adminMfa==="Yes"?'<span class="badge ok">Yes</span>':o.adminMfa==="No"?'<span class="badge bad">No</span>':'<span class="badge neutral">'+esc(o.adminMfa||"—")+'</span>')+'</td>'+
       '<td class="num">'+fmt(o.devices)+'</td>'+
@@ -574,12 +576,13 @@ function renderDetail(o){
             (o.adminMfa==="Yes"?'<span class="badge ok">Admin MFA enforced</span>':o.adminMfa==="No"?'<span class="badge bad">Admin MFA not enforced</span>':'<span class="badge neutral">Admin MFA: '+esc(o.adminMfa||"—")+'</span>')+
             (o.activeNoMfa>0?'<span class="badge bad">'+o.activeNoMfa+' active user'+(o.activeNoMfa===1?'':'s')+' w/o MFA</span>':'<span class="badge ok">All active users on MFA</span>')+
             (o.expiredPw>0?'<span class="badge warn">'+o.expiredPw+' expired password'+(o.expiredPw===1?'':'s')+'</span>':'')+
+            (o.duo?'<span class="badge neutral" title="Duo account: '+esc(o.duo.account)+' · fetched '+esc(o.duo.fetchedAt)+'">MFA incl. Cisco Duo</span>':'')+
           '</div>'+
         '</div>'+
       '</div>'+
       '<div class="quickstats">'+
         qs("Users", fmt(o.active), o.suspended?o.suspended+" suspended":"all active")+
-        qs("MFA coverage", o.mfaPct==null?"—":'<span class="'+pctClass(o.mfaPct,90,70)+'">'+o.mfaPct.toFixed(1)+"%</span>", fmt(o.mfaEnrolled)+" enrolled")+
+        qs("MFA coverage", o.mfaPct==null?"—":'<span class="'+pctClass(o.mfaPct,90,70)+'">'+o.mfaPct.toFixed(1)+"%</span>", fmt(o.mfaEnrolled)+" enrolled"+(o.duo?" · incl. Duo":""))+
         qs("Devices", fmt(o.devices), o.mdm+" MDM managed")+
         qs("Encrypted", ep==null?"—":'<span class="'+pctClass(ep,90,60)+'">'+ep.toFixed(0)+"%</span>", fmt(o.encrypted)+" of "+fmt(o.devices))+
         qs("Stale 30d", fmt(o.notSeen30d), "not checked in")+

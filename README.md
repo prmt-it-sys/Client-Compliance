@@ -39,10 +39,38 @@ Requires: `pip3 install openpyxl cryptography`, and `gh auth switch --user prmt-
 Re-run `./publish.sh` with the new password (it re-encrypts everything with a
 fresh salt), then share the new password with the team.
 
+## Cisco Duo integration
+
+Some clients use Duo instead of JumpCloud for MFA. `scripts/duo_pull.py` pulls
+enrollment straight from the **Duo Admin API** (no PromptQL needed) and the build
+merges it in: users are matched by email, each org's "without MFA" list shrinks by
+everyone enrolled in Duo, MFA % becomes the JumpCloud ∪ Duo union, and the posture
+score's MFA component is re-weighted. Orgs with Duo data get a `＋DUO` tag.
+
+One-time setup:
+
+1. In the **Duo Admin Panel** (as an Owner-role admin): *Applications → Protect an
+   Application → Admin API*. Grant only **read information / read resource**.
+2. Save the credentials to `.duo.env` in the repo root (git-ignored):
+
+   ```
+   DUO_HOST=api-xxxxxxxx.duosecurity.com
+   DUO_IKEY=DIXXXXXXXXXXXXXXXXXXXX
+   DUO_SKEY=****************************************
+   ```
+
+   MSP parents with child accounts per client: also create an **Accounts API**
+   application, enable *Admin API for child accounts*, and add
+   `DUO_ACCOUNTS_HOST/IKEY/SKEY`. Each child account is pulled separately.
+3. If a Duo account name doesn't match the org name in the report, map it in
+   `duo_map.json` (git-ignored): `{"Duo account name": "Org name"}`.
+
+`./publish.sh` auto-pulls Duo before every rebuild when `.duo.env` exists.
+
 ## Data caveats
 
-- **JumpCloud only for now.** Cisco Duo is not yet integrated, so MFA coverage for
-  clients that use Duo instead of JumpCloud may be under-reported. The banner in
-  the dashboard states this; remove `caveat` in `scripts/build.py` once Duo is in.
+- Until `.duo.env` is configured the data is **JumpCloud only**, so MFA coverage
+  for clients that use Duo may be under-reported (the dashboard banner says so;
+  it switches automatically once Duo data is merged).
 - Posture score is a weighted composite (MFA 40%, encryption 25%, check-in health
   15%, password compliance 10%, admin-MFA 10%) — a guide, not a compliance grade.

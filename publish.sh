@@ -14,6 +14,12 @@ if [[ -z "$PRMT_DASH_PASS" && -f .dashpass ]]; then
   export PRMT_DASH_PASS="$(cat .dashpass)"
 fi
 
+# Pull fresh Duo MFA data when Admin API credentials are configured.
+if [[ -f .duo.env ]]; then
+  echo "Pulling Cisco Duo MFA enrollment…"
+  python3 scripts/duo_pull.py
+fi
+
 python3 scripts/build.py "$XLSX"
 
 ACTIVE=$(gh auth status 2>/dev/null | grep -B1 "Active account: true" | head -1 | awk '{print $NF}') || true

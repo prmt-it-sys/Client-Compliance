@@ -4,5 +4,10 @@ data.json
 *.xlsm
 .dashpass
 
+# Duo: credentials, pulled user data, and client-name mapping stay local
+.duo.env
+duo.json
+duo_map.json
+
 .DS_Store
 Icon?

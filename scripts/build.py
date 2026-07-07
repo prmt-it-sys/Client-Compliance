@@ -9,10 +9,18 @@ decrypts in-browser, so the public repo only ever holds ciphertext.
 Usage:
     python3 scripts/build.py "<report.xlsx>" [--out data.enc.json]
                              [--plain data.json] [--password PASS]
+                             [--duo duo.json] [--duo-map duo_map.json]
 
 Password resolution order: --password, $PRMT_DASH_PASS, interactive prompt.
 A fresh random salt is generated on every build (no encrypted side-files
 depend on a stable key, unlike the Client Directory's images).
+
+Duo merge: if duo.json exists (produced by scripts/duo_pull.py), each Duo
+account is matched to a summary org by name (override in duo_map.json:
+{"<duo account name>": "<org name>"}). Users are matched by email — an org's
+"Active users WITHOUT MFA" list shrinks by everyone enrolled in Duo, MFA %
+becomes the JumpCloud ∪ Duo union, and the posture score's MFA component is
+re-weighted accordingly (same renormalized weights as the source report).
 """
 import argparse, base64, getpass, json, os, re, sys, unicodedata
 from datetime import date
@@ -145,6 +153,94 @@ def build_data(xlsx_path):
     }
 
 
+def norm_name(s):
+    return re.sub(r"[^a-z0-9]", "", (s or "").casefold())
+
+
+def mfa_weight(org):
+    """Renormalized weight of the MFA component in the posture score.
+    Mirrors the report's rule: unavailable metrics are excluded and the
+    remaining weights renormalized (MFA 40, encryption 25, check-in 15,
+    password 10, admin-MFA 10)."""
+    if org.get("mfaPct") is None:
+        return 0.0
+    avail = [40]                                   # MFA
+    if (org.get("devices") or 0) > 0:
+        avail += [25, 15]                          # encryption + check-in
+    if (org.get("active") or 0) > 0:
+        avail += [10]                              # password compliance
+    if org.get("adminMfa") in ("Yes", "No"):
+        avail += [10]                              # admin MFA
+    return 40 / sum(avail)
+
+
+def merge_duo(data, duo, mapping):
+    by_norm = {norm_name(o["name"]): o for o in data["orgs"]}
+    merged = []
+    for acct in duo["accounts"]:
+        target = mapping.get(acct["name"], acct["name"])
+        org = by_norm.get(norm_name(target))
+        if org is None:
+            print(f"  ! Duo account '{acct['name']}' matches no org — "
+                  f"add it to duo_map.json", file=sys.stderr)
+            continue
+        enrolled = set(acct.get("enrolledEmails") or [])
+        active = org.get("active") or 0
+
+        # Shrink the JumpCloud "no MFA" list by everyone enrolled in Duo.
+        covered = 0
+        for sec in org.get("sections") or []:
+            for blk in sec["blocks"]:
+                if blk["type"] == "table" and "WITHOUT MFA" in (blk.get("title") or ""):
+                    try:
+                        ei = [h.lower() for h in blk["headers"]].index("email")
+                    except ValueError:
+                        continue
+                    keep = [r for r in blk["rows"] if r[ei].lower() not in enrolled]
+                    covered = len(blk["rows"]) - len(keep)
+                    blk["rows"] = keep
+                    blk["title"] = (f"Active users WITHOUT MFA — JumpCloud or Duo "
+                                    f"({len(keep)})")
+
+        old_pct = org.get("mfaPct")
+        no_mfa = max(0, (org.get("activeNoMfa") or 0) - covered)
+        new_pct = round((active - no_mfa) / active * 100, 1) if active else old_pct
+        org["activeNoMfa"] = no_mfa
+        org["mfaEnrolled"] = active - no_mfa
+        org["mfaPct"] = new_pct
+        if org.get("score") is not None and old_pct is not None and new_pct is not None:
+            org["score"] = round(
+                min(100, max(0, org["score"] + mfa_weight(org) * (new_pct - old_pct))), 1)
+
+        if covered and new_pct is not None:
+            org["headline"] = ((org.get("headline") or "").rstrip(". ") +
+                               f" — {new_pct}% MFA coverage after including Duo").lstrip(" —")
+        org["duo"] = {"account": acct["name"], "active": acct["active"],
+                      "enrolled": acct["enrolled"], "mfaPct": acct["mfaPct"],
+                      "coveredJcUsers": covered, "fetchedAt": duo["fetchedAt"]}
+        for sec in org.get("sections") or []:
+            if sec["title"].startswith("B."):
+                sec["blocks"].append({"type": "kv", "k": "Duo account", "v": acct["name"]})
+                sec["blocks"].append({"type": "kv", "k": "Duo MFA enrolled",
+                                      "v": f"{acct['enrolled']} of {acct['active']} active"
+                                           + (f" ({acct['mfaPct']}%)" if acct["mfaPct"] is not None else "")})
+                sec["blocks"].append({"type": "kv", "k": "Combined MFA coverage (JumpCloud ∪ Duo)",
+                                      "v": f"{active - no_mfa} of {active}"
+                                           + (f" ({new_pct}%)" if new_pct is not None else "")})
+                sec["blocks"].append({"type": "note", "text":
+                    "Note: MFA coverage combines JumpCloud-native enrollment with Cisco Duo "
+                    "enrollment, matched by email address. Posture score adjusted accordingly."})
+                break
+        merged.append(org["name"])
+
+    if merged:
+        data["source"] = "JumpCloud (live API via PromptQL) + Cisco Duo (Admin API)"
+        data["caveat"] = (f"MFA coverage combines JumpCloud and Cisco Duo enrollment "
+                          f"(Duo fetched {duo['fetchedAt']}: "
+                          f"{', '.join(merged)}). Other orgs are JumpCloud-only.")
+    return merged
+
+
 def encrypt(password, obj):
     salt = os.urandom(16)
     iv = os.urandom(12)
@@ -163,12 +259,20 @@ def main():
     ap.add_argument("--plain", default="data.json",
                     help="plaintext copy for local dev (git-ignored); '' to skip")
     ap.add_argument("--password", default=None)
+    ap.add_argument("--duo", default="duo.json",
+                    help="duo.json from scripts/duo_pull.py; merged if the file exists")
+    ap.add_argument("--duo-map", default="duo_map.json",
+                    help="optional {duo account name: org name} overrides")
     args = ap.parse_args()
 
     pw = args.password or os.environ.get("PRMT_DASH_PASS") or getpass.getpass("Dashboard password: ")
     if not pw:
         sys.exit("A password is required.")
     data = build_data(args.xlsx)
+    if args.duo and os.path.exists(args.duo):
+        mapping = json.load(open(args.duo_map)) if os.path.exists(args.duo_map) else {}
+        merged = merge_duo(data, json.load(open(args.duo)), mapping)
+        print(f"merged Duo MFA into {len(merged)} org(s): {', '.join(merged) or '—'}")
     if args.plain:
         with open(args.plain, "w") as f:
             json.dump(data, f, ensure_ascii=False, indent=1)
